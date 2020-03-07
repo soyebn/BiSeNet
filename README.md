@@ -1,4 +1,6 @@
 # BiSeNet
+This Fork: To enable option of disabling ABN for writing TorchScript Model
+
 My implementation of [BiSeNet](https://arxiv.org/abs/1808.00897). My environment is pytorch1.0 and python3, the code is not tested with other environments, but it should also work on similar environments.
 
 

@@ -23,7 +23,8 @@ import logging
 import time
 import datetime
 import argparse
-
+from torchsummary import summary
+from pytorch_jacinto_ai import xnn
 
 respth = './res'
 if not osp.exists(respth): os.makedirs(respth)
@@ -40,6 +41,28 @@ def parse_args():
             )
     return parse.parse_args()
 
+def store_stats(net = None, write_onnx  = False, write_torch_script= True):
+    sample_batch_size, channel, height, width = [8, 3, 360, 640]
+    dummy_input = torch.randn(sample_batch_size, channel, height, width, device='cuda')
+    flops = xnn.utils.forward_count_flops(net, dummy_input)
+    print("GFlops : {:.2f} GMAC : {:.2f} ".format(flops/1E9, (flops/(2*1E9))))
+
+    version = torch.__version__.split('.')
+    print(version)
+    torch_version = 100*int(version[0]) + 10*int(version[1]) + int(version[2])
+    print("torch_version: ", torch_version)
+    if write_torch_script and torch_version > 110:
+        # Use torch.jit.trace to generate a torch.jit.ScriptModule via tracing.
+        traced_script_module = torch.jit.trace(net, dummy_input)
+        pt_file_name = os.path.join('/data/files/work/temp/BiSe', "BiSeNet_diss.pth")
+        print("saving ", pt_file_name)
+        torch.jit.save(traced_script_module, pt_file_name)
+
+    if write_onnx:   
+        onnx_file_name = os.path.join('/data/files/work/temp/BiSe', "BiSeNet_diss.onnx")
+        print(onnx_file_name)
+        print(summary(net, dummy_input.shape[1:]))
+        torch.onnx.export(net, dummy_input, onnx_file_name, do_constant_folding=True, opset_version=10)
 
 def train():
     args = parse_args()
@@ -71,6 +94,9 @@ def train():
     ignore_idx = 255
     net = BiSeNet(n_classes=n_classes)
     net.cuda()
+
+    store_stats(net=net)
+
     net.train()
     net = nn.parallel.DistributedDataParallel(net,
             device_ids = [args.local_rank, ],

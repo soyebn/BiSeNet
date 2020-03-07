@@ -8,8 +8,21 @@ import torch.nn.functional as F
 import torchvision
 
 from resnet import Resnet18
-from modules.bn import InPlaceABNSync as BatchNorm2d
 
+#ABN does not work with latest pytorch (1.4 or 1.5)
+version = torch.__version__.split('.')
+print(version)
+torch_version = 100*int(version[0]) + 10*int(version[1]) + int(version[2])
+
+if torch_version <= 110:
+    from modules.bn import InPlaceABNSync as BatchNorm2dABN
+    print("torch_version: ", torch_version)
+    BatchNorm2d = BatchNorm2dABN
+    use_abn = True
+else: 
+    BatchNorm2d =  torch.nn.BatchNorm2d
+    use_abn = False
+print("type(BatchNorm2d) : ", type(BatchNorm2d))          
 
 class ConvBNReLU(nn.Module):
     def __init__(self, in_chan, out_chan, ks=3, stride=1, padding=1, *args, **kwargs):
@@ -70,7 +83,9 @@ class AttentionRefinementModule(nn.Module):
         super(AttentionRefinementModule, self).__init__()
         self.conv = ConvBNReLU(in_chan, out_chan, ks=3, stride=1, padding=1)
         self.conv_atten = nn.Conv2d(out_chan, out_chan, kernel_size= 1, bias=False)
-        self.bn_atten = BatchNorm2d(out_chan, activation='none')
+        
+        self.bn_atten = BatchNorm2d(out_chan, activation='none') if use_abn else BatchNorm2d(out_chan)
+
         self.sigmoid_atten = nn.Sigmoid()
         self.init_weight()
 

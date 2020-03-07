@@ -6,7 +6,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as modelzoo
 
-from modules.bn import InPlaceABNSync as BatchNorm2d
+
+version = torch.__version__.split('.')
+print(version)
+torch_version = 100*int(version[0]) + 10*int(version[1]) + int(version[2])
+
+#ABN does not work with latest pytorch (1.4 or 1.5)
+if torch_version <= 110:
+    from modules.bn import InPlaceABNSync as BatchNorm2dABN
+    #return BatchNorm2dABN(out_chan, activation= activation)
+    print("torch_version: ", torch_version)
+    BatchNorm2d = BatchNorm2dABN
+    use_abn = True
+else: 
+    BatchNorm2d =  torch.nn.BatchNorm2d
+    use_abn = False
+print("type(BatchNorm2d) : ", type(BatchNorm2d)) 
 
 resnet18_url = 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
 
@@ -23,14 +38,23 @@ class BasicBlock(nn.Module):
         self.conv1 = conv3x3(in_chan, out_chan, stride)
         self.bn1 = BatchNorm2d(out_chan)
         self.conv2 = conv3x3(out_chan, out_chan)
-        self.bn2 = BatchNorm2d(out_chan, activation='none')
+     
+        self.bn2 = BatchNorm2d(out_chan, activation='none') if use_abn else BatchNorm2d(out_chan)
+           
         self.relu = nn.ReLU(inplace=True)
         self.downsample = None
         if in_chan != out_chan or stride != 1:
-            self.downsample = nn.Sequential(
-                nn.Conv2d(in_chan, out_chan,
-                          kernel_size=1, stride=stride, bias=False),
-                BatchNorm2d(out_chan, activation='none'),
+            if use_abn:
+                self.downsample = nn.Sequential(
+                    nn.Conv2d(in_chan, out_chan,
+                              kernel_size=1, stride=stride, bias=False),
+                    BatchNorm2d(out_chan, activation='none'),
+                    )
+            else:
+                self.downsample = nn.Sequential(
+                    nn.Conv2d(in_chan, out_chan,
+                              kernel_size=1, stride=stride, bias=False),
+                    BatchNorm2d(out_chan),
                 )
 
     def forward(self, x):
